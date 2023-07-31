@@ -1,0 +1,129 @@
+// Set up the project
+const express = require('express');
+const router = express.Router();
+const db = require('./database');
+const aws = require('aws-sdk');
+
+// User Authentication
+router.post('/api/users/register', (req, res) => {
+  const { username, email, password } = req.body;
+
+  // Validate the user input
+  if (!username || !email || !password) {
+    res.status(400).send('Invalid input');
+    return;
+  }
+
+  // Check if the username is already taken
+  const userExists = db.users.findOne({ username });
+  if (userExists) {
+    res.status(400).send('Username already taken');
+    return;
+  }
+
+  // Create the new user
+  const user = {
+    username,
+    email,
+    password,
+  };
+  db.users.insertOne(user);
+
+  // Login the user
+  res.status(200).send({ token: user._id });
+});
+
+// Create Folder
+router.post('/api/folders', (req, res) => {
+  const { username, folderName } = req.body;
+
+  // Validate the user input
+  if (!username || !folderName) {
+    res.status(400).send('Invalid input');
+    return;
+  }
+
+  // Check if the user exists
+  const user = db.users.findOne({ username });
+  if (!user) {
+    res.status(401).send('Unauthorized');
+    return;
+  }
+
+  // Create the new folder
+  const folder = {
+    name: folderName,
+    user: user._id,
+  };
+  db.folders.insertOne(folder);
+
+  // Respond with the new folder
+  res.status(200).send(folder);
+});
+
+// Create Subfolder
+router.post('/api/folders/:folderId/subfolders', (req, res) => {
+  const { folderId, subfolderName } = req.params;
+
+  // Validate the user input
+  if (!folderId || !subfolderName) {
+    res.status(400).send('Invalid input');
+    return;
+  }
+
+  // Check if the folder exists
+  const folder = db.folders.findOne({ _id: folderId });
+  if (!folder) {
+    res.status(404).send('Folder not found');
+    return;
+  }
+
+  // Check if the user owns the folder
+  const user = db.users.findOne({ _id: folder.user });
+  if (user.username !== req.body.username) {
+    res.status(401).send('Unauthorized');
+    return;
+  }
+
+  // Create the new subfolder
+  const subfolder = {
+    name: subfolderName,
+    parent: folder._id,
+  };
+  db.folders.insertOne(subfolder);
+
+  // Respond with the new subfolder
+  res.status(200).send(subfolder);
+});
+
+// Upload Files
+router.post('/api/files', (req, res) => {
+  const { username, folderId, fileName, fileData } = req.body;
+
+  // Validate the user input
+  if (!username || !folderId || !fileName || !fileData) {
+    res.status(400).send('Invalid input');
+    return;
+  }
+
+  // Check if the folder exists
+  const folder = db.folders.findOne({ _id: folderId });
+  if (!folder) {
+    res.status(404).send('Folder not found');
+    return;
+  }
+
+  // Check if the user owns the folder
+  const user = db.users.findOne({ _id: folder.user });
+  if (user.username !== req.body.username) {
+    res.status(401).send('Unauthorized');
+    return;
+  }
+
+  // Upload the file to S3
+  const file = {
+    name: fileName,
+    size: fileData.length,
+    user: user._id,
+    folder: folder._id
+}
